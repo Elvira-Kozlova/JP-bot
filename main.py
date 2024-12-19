@@ -3,90 +3,152 @@ import random
 import time
 import os
 from dotenv import load_dotenv
+from dictionary_kana_kanji import romaji_katakana, romaji_hiragana, noryoku_5, noryoku_5_translate
 
-# Токен вашего бота
+
+load_dotenv()
+
+
 TOKEN = os.getenv('TOKEN')
+
+if not TOKEN:
+    raise ValueError("Bot token is not defined. Check your .env file.")
 
 bot = telebot.TeleBot(TOKEN)
 
 
-romaji_katakana = {
-    'ア': 'a', 'イ': 'i', 'ウ': 'u', 'エ': 'e', 'オ': 'o', 'カ': 'ka', 'キ': 'ki', 'ク': 'ku', 'ケ': 'ke', 'コ': 'ko',
-    'サ': 'sa', 'シ': 'shi', 'ス': 'su', 'セ': 'se', 'ソ': 'so', 'タ': 'ta', 'チ': 'chi', 'ツ': 'tsu', 'テ': 'te', 'ト': 'to',
-    'ナ': 'na', 'ニ': 'ni', 'ヌ': 'nu', 'ネ': 'ne', 'ノ': 'no', 'ハ': 'ha', 'ヒ': 'hi', 'フ': 'fu', 'ヘ': 'he', 'ホ': 'ho',
-    'マ': 'ma', 'ミ': 'mi', 'ム': 'mu', 'メ': 'me', 'モ': 'mo', 'ヤ': 'ya', 'ユ': 'yu', 'ヨ': 'yo', 'ラ': 'ra', 'リ': 'ri',
-    'ル': 'ru', 'レ': 're', 'ロ': 'ro', 'ワ': 'wa', 'ヲ': 'wo', 'ン': 'n'
-}
-
-romaji_hiragana = {
-    'あ': 'a', 'い': 'i', 'う': 'u', 'え': 'e', 'お': 'o', 'か': 'ka', 'き': 'ki', 'く': 'ku', 'け': 'ke', 'こ': 'ko',
-    'さ': 'sa', 'し': 'shi', 'す': 'su', 'せ': 'se', 'そ': 'so', 'た': 'ta', 'ち': 'chi', 'つ': 'tsu', 'て': 'te', 'と': 'to',
-    'な': 'na', 'に': 'ni', 'ぬ': 'nu', 'ね': 'ne', 'の': 'no', 'は': 'ha', 'ひ': 'hi', 'ふ': 'fu', 'へ': 'he', 'ほ': 'ho',
-    'ま': 'ma', 'み': 'mi', 'む': 'mu', 'め': 'me', 'も': 'mo', 'や': 'ya', 'ゆ': 'yu', 'よ': 'yo', 'ら': 'ra', 'り': 'ri',
-    'る': 'ru', 'れ': 're', 'ろ': 'ro', 'わ': 'wa', 'を': 'wo', 'ん': 'n'
-}
-
-
+user_states = {}
 user_data = {}
+cooldown_time = 3 # Время ожидания между действиями в секундах
+
 
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_data[message.chat.id] = {'katakana': {'questions': list(romaji_katakana.keys()), 'current': None},
-                                  'hiragana': {'questions': list(romaji_hiragana.keys()), 'current': None}}
-    keyboard = telebot.types.ReplyKeyboardMarkup()
+                                  'hiragana': {'questions': list(romaji_hiragana.keys()), 'current': None},
+                                  'kanji': {'questions': list(noryoku_5.keys()),'current': None},
+                                  'kanji_translate':{'questions': list(noryoku_5_translate.keys()), 'current': None}}
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(telebot.types.KeyboardButton('Хирагана'))
     keyboard.add(telebot.types.KeyboardButton('Катакана'))
-    bot.send_message(message.chat.id, 'Что будем проверять?', reply_markup=keyboard)
+    keyboard.add(telebot.types.KeyboardButton('Кандзи JLPT5'))
+
+    welcome_message = (
+        "👋 こんにちは! \n\n"
+        "Позволь представиться. Я - бот-сенсей, и я предназначен для проверки знаний каны и кандзи.\n\n"
+        "Пока что мои возможности не так совершенны, но создатели сказали, что вскоре буду самым крутым ботом! "
+        "Поэтому они велели мне тебе передать, чтобы ты проявил терпение!☝️\n\n"
+        "Так-с, что-то я заболтался... Давай приступим!\n\n"
+        "📝 Выбери, что хочешь проверить: хирагану, катакану или кандзи.\n\n"
+        "👷‍♂️👷‍♀️ Кстати! Если ты заметил какую-то неточность или я начал хандрить, или просто желаешь поблагодарить - "
+        "ты всегда можешь обратиться к моим создателям (один из которых указан у меня в описании) и они среагируют."
+    )
+    bot.send_message(message.chat.id, welcome_message, reply_markup=keyboard)
+
 
 @bot.message_handler(content_types=['text'])
 def check(message):
+    # Проверка на спам
+    current_time = time.time()
+    last_action_time = user_states.get(message.chat.id, {}).get('last_action_time', 0)
+
+    if current_time - last_action_time < cooldown_time:
+        bot.send_message(message.chat.id, "Пожалуйста, подожди несколько секунд перед тем, как нажать на кнопку.")
+        return
+
+    # Обновляем время последнего действия
+    user_states[message.chat.id] = {'last_action_time': current_time}
+
+
+    if message.text == 'Главное меню':
+        main_menu(message)
+        return
+
+
     if message.text == 'Хирагана':
         check_hiragana(message)
     elif message.text == 'Катакана':
         check_katakana(message)
+    elif message.text == 'Кандзи JLPT5':
+        check_kanji(message)
     elif message.text == 'Назад':
         back_to_start(message)
-    elif message.text in romaji_katakana.values() or message.text in romaji_hiragana.values():
+    elif (message.text in romaji_katakana.values() or
+          message.text in romaji_hiragana.values() or
+          message.text in noryoku_5.values() or
+          message.text in noryoku_5_translate.values()):
         check_answer(message)
     else:
-        bot.send_message(message.chat.id, 'Вы ничего не выбрали. ')
+        bot.send_message(message.chat.id, 'Ты ничего не выбрал. ')
+
 
 def back_to_start(message):
-    keyboard = telebot.types.ReplyKeyboardMarkup()
+    # Сбросить текущее состояние вопросов
+    user_data[message.chat.id]['katakana']['current'] = None
+    user_data[message.chat.id]['hiragana']['current'] = None
+    user_data[message.chat.id]['kanji']['current'] = None
+    user_data[message.chat.id]['kanji_check'] = None  # Сбросить выбор между чтением и значением
+
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(telebot.types.KeyboardButton('Хирагана'))
     keyboard.add(telebot.types.KeyboardButton('Катакана'))
+    keyboard.add(telebot.types.KeyboardButton('Кандзи JLPT5'))
     bot.send_message(message.chat.id, 'Что будем проверять?', reply_markup=keyboard)
 
-def check_answer(message):
-    if 'katakana' in user_data[message.chat.id] and user_data[message.chat.id]['katakana']['current']:
-        correct_symbol = user_data[message.chat.id]['katakana']['current']
-        correct_romaji = romaji_katakana[correct_symbol]
-    elif 'hiragana' in user_data[message.chat.id] and user_data[message.chat.id]['hiragana']['current']:
-        correct_symbol = user_data[message.chat.id]['hiragana']['current']
-        correct_romaji = romaji_hiragana[correct_symbol]
-    else:
-        bot.send_message(message.chat.id, 'Что-то пошло не так.')
-        return
 
-    if message.text.strip().lower() == correct_romaji.strip().lower():
+def check_answer(message):
+    correct_symbol = None
+    correct_reading = None
+    correct_meaning = None  # Инициализация для значений кандзи
+
+    # Проверка для катаканы, хираганы и кандзи
+    if user_data[message.chat.id]['katakana']['current']:
+        correct_symbol = user_data[message.chat.id]['katakana']['current']
+        correct_reading = romaji_katakana[correct_symbol]
+    elif user_data[message.chat.id]['hiragana']['current']:
+        correct_symbol = user_data[message.chat.id]['hiragana']['current']
+        correct_reading = romaji_hiragana[correct_symbol]
+    elif user_data[message.chat.id]['kanji']['current']:
+        correct_symbol = user_data[message.chat.id]['kanji']['current']
+        if user_data[message.chat.id]['kanji_check'] == 'reading':
+            correct_reading = noryoku_5[correct_symbol]
+        elif user_data[message.chat.id]['kanji_check'] == 'meaning':
+            correct_meaning = noryoku_5_translate[correct_symbol]
+
+    # Проверка ответа
+    if correct_reading and message.text.strip().lower() == correct_reading.strip().lower():
         bot.send_message(message.chat.id, 'Верно!')
-        if user_data[message.chat.id]['katakana']['current']:
-            check_katakana(message)
-        elif user_data[message.chat.id]['hiragana']['current']:
-            check_hiragana(message)
+    elif correct_meaning and message.text.strip().lower() == correct_meaning.strip().lower():
+        bot.send_message(message.chat.id, 'Верно!')
     else:
-        bot.send_message(message.chat.id, 'Неверно!')
-        if user_data[message.chat.id]['katakana']['current']:
-            check_katakana(message)
-        elif user_data[message.chat.id]['hiragana']['current']:
-            check_hiragana(message)
+        if correct_reading:
+            bot.send_message(message.chat.id, f'Неправильно! Правильный ответ: {correct_reading}')
+        elif correct_meaning:
+            bot.send_message(message.chat.id, f'Неправильно! Правильный ответ: {correct_meaning}')
+
+    # Перемещение к следующему вопросу
+    if user_data[message.chat.id]['katakana']['current']:
+        check_katakana(message)
+    elif user_data[message.chat.id]['hiragana']['current']:
+        check_hiragana(message)
+    elif user_data[message.chat.id]['kanji']['current']:
+        if user_data[message.chat.id]['kanji_check'] == 'reading':
+            check_kanji_reading(message)
+        elif user_data[message.chat.id]['kanji_check'] == 'meaning':
+            check_kanji_meaning(message)
+
+
+
 
 def check_katakana(message):
     questions = user_data[message.chat.id]['katakana']['questions']
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
     if not questions:
-        bot.send_message(message.chat.id, 'Поздравляю! Вы прошли все слоги катаканы!')
-        return
+        keyboard.add(telebot.types.KeyboardButton('Главное меню'))
+        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все слоги катаканы!', reply_markup=keyboard)
+
     current_question = random.choice(questions)
     user_data[message.chat.id]['katakana']['current'] = current_question
     user_data[message.chat.id]['katakana']['questions'].remove(current_question)
@@ -97,18 +159,23 @@ def check_katakana(message):
             option = random.choice(list(romaji_katakana.keys()))
         options.append(option)
     random.shuffle(options)
-    keyboard = telebot.types.ReplyKeyboardMarkup()
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     for option in options:
         romaji_option = romaji_katakana[option]
         keyboard.add(telebot.types.KeyboardButton(romaji_option))
     keyboard.add(telebot.types.KeyboardButton('Назад'))
     bot.send_message(message.chat.id, f"{current_question} – какой это слог?", reply_markup=keyboard)
 
+
 def check_hiragana(message):
     questions = user_data[message.chat.id]['hiragana']['questions']
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
     if not questions:
-        bot.send_message(message.chat.id, 'Поздравляю! Вы прошли все слоги хираганы!')
+        keyboard.add(telebot.types.KeyboardButton('Главное меню'))
+        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все слоги хираганы!', reply_markup=keyboard)
         return
+
     current_question = random.choice(questions)
     user_data[message.chat.id]['hiragana']['current'] = current_question
     user_data[message.chat.id]['hiragana']['questions'].remove(current_question)
@@ -119,16 +186,120 @@ def check_hiragana(message):
             option = random.choice(list(romaji_hiragana.keys()))
         options.append(option)
     random.shuffle(options)
-    keyboard = telebot.types.ReplyKeyboardMarkup()
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     for option in options:
         romaji_option = romaji_hiragana[option]
         keyboard.add(telebot.types.KeyboardButton(romaji_option))
+
     keyboard.add(telebot.types.KeyboardButton('Назад'))
     bot.send_message(message.chat.id, f"{current_question} – какой это слог?", reply_markup=keyboard)
 
+
+def check_kanji(message):
+    # Показываем меню выбора чтения или значения
+    kanji_menu(message)
+
+
+def kanji_menu(message):
+    # Создаём кнопки для выбора проверки
+    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    reading_button = telebot.types.KeyboardButton('Чтение')
+    meaning_button = telebot.types.KeyboardButton('Значение')
+    markup.add(reading_button, meaning_button)
+
+    bot.send_message(message.chat.id, "Что будем проверять: чтение или значение?", reply_markup=markup)
+    bot.register_next_step_handler(message, kanji_check_selection)
+
+
+def kanji_check_selection(message):
+    # Проверяем выбор пользователя и сохраняем его выбор
+    if message.text == 'Чтение':
+        user_data[message.chat.id]['kanji_check'] = 'reading'
+        bot.send_message(message.chat.id, 'Ты выбрал проверку чтений кандзи.')
+        check_kanji_reading(message)  # Начинаем проверку чтений кандзи
+    elif message.text == 'Значение':
+        user_data[message.chat.id]['kanji_check'] = 'meaning'
+        bot.send_message(message.chat.id, 'Ты выбрал проверку значений кандзи.')
+        check_kanji_meaning(message)  # Начинаем проверку значений кандзи
+    else:
+        bot.send_message(message.chat.id, 'Пожалуйста, выбери чтение или значение.')
+        kanji_menu(message)
+
+
+def check_kanji_reading(message):
+    questions = user_data[message.chat.id]['kanji']['questions']
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    # Если список вопросов пуст, сообщаем об этом
+    if not questions:
+        keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard.add(telebot.types.KeyboardButton('Главное меню'))
+        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все кандзи N5!', reply_markup=keyboard)
+        return
+
+    # Выбираем текущий вопрос и сохраняем его в user_data
+    current_question = random.choice(questions)
+    user_data[message.chat.id]['kanji']['current'] = current_question
+    user_data[message.chat.id]['kanji']['questions'].remove(current_question)
+
+    # Продолжаем с кнопками
+    options = [current_question]
+    for _ in range(3):
+        option = random.choice(list(noryoku_5.keys()))
+        while option in options:
+            option = random.choice(list(noryoku_5.keys()))
+        options.append(option)
+    random.shuffle(options)
+
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for option in options:
+        kanji_option = noryoku_5[option]  # Преобразуем символы кандзи в чтения (кунъёми и онъёми)
+        keyboard.add(telebot.types.KeyboardButton(kanji_option))
+
+    keyboard.add(telebot.types.KeyboardButton('Назад'))
+
+    # Отправляем вопрос пользователю
+    bot.send_message(message.chat.id, f"{current_question} – как читается этот кандзи?", reply_markup=keyboard)
+
+
+
+def check_kanji_meaning(message):
+    questions = user_data[message.chat.id]['kanji']['questions']
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    if not questions:
+        keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard.add(telebot.types.KeyboardButton('Главное меню'))
+        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все кандзи N5!', reply_markup=keyboard)
+        return
+
+    current_question = random.choice(questions)
+    user_data[message.chat.id]['kanji']['current'] = current_question
+    user_data[message.chat.id]['kanji']['questions'].remove(current_question)
+
+    options = [current_question]
+    for _ in range(3):
+        option = random.choice(list(noryoku_5_translate.keys()))
+        while option in options:
+            option = random.choice(list(noryoku_5_translate.keys()))
+        options.append(option)
+    random.shuffle(options)
+
+    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for option in options:
+        meaning_option = noryoku_5_translate[option]  # Преобразуем кандзи в его значение
+        keyboard.add(telebot.types.KeyboardButton(meaning_option))
+    keyboard.add(telebot.types.KeyboardButton('Назад'))
+    bot.send_message(message.chat.id, f"{current_question} – что означает этот кандзи?", reply_markup=keyboard)
+
+
+@bot.message_handler(func=lambda message: message.text == 'Главное меню')
+def main_menu(message):
+    back_to_start(message)
+
+
 while True:
     try:
-        bot.polling(non_stop=True, timeout=60, long_polling_timeout=60)
+        bot.polling(non_stop=True, timeout=120, long_polling_timeout=120)
     except Exception as e:
         print(f"Error occurred: {e}")
         time.sleep(5)
