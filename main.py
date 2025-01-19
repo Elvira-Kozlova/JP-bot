@@ -3,7 +3,7 @@ import random
 import time
 import os
 from dotenv import load_dotenv
-from dictionary_kana_kanji import romaji_katakana, romaji_hiragana, noryoku_5, noryoku_5_translate
+from dictionary_kana_kanji import romaji_katakana, romaji_hiragana, noryoku, noryoku_translate
 
 
 load_dotenv()
@@ -27,12 +27,13 @@ cooldown_time = 3 # Время ожидания между действиями 
 def start(message):
     user_data[message.chat.id] = {'katakana': {'questions': list(romaji_katakana.keys()), 'current': None},
                                   'hiragana': {'questions': list(romaji_hiragana.keys()), 'current': None},
-                                  'kanji': {'questions': list(noryoku_5.keys()),'current': None},
-                                  'kanji_translate':{'questions': list(noryoku_5_translate.keys()), 'current': None}}
+                                  'kanji': {'questions': list(noryoku.keys()),'current': None},
+                                  'kanji_translate':{'questions': list(noryoku_translate.keys()), 'current': None}
+                                }
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(telebot.types.KeyboardButton('Хирагана'))
     keyboard.add(telebot.types.KeyboardButton('Катакана'))
-    keyboard.add(telebot.types.KeyboardButton('Кандзи JLPT5'))
+    keyboard.add(telebot.types.KeyboardButton('Кандзи N5-N4'))
 
     welcome_message = (
         "👋 こんにちは! \n\n"
@@ -70,14 +71,14 @@ def check(message):
         check_hiragana(message)
     elif message.text == 'Катакана':
         check_katakana(message)
-    elif message.text == 'Кандзи JLPT5':
+    elif message.text == 'Кандзи N5-N4':
         check_kanji(message)
     elif message.text == 'Назад':
         back_to_start(message)
     elif (message.text in romaji_katakana.values() or
           message.text in romaji_hiragana.values() or
-          message.text in noryoku_5.values() or
-          message.text in noryoku_5_translate.values()):
+          message.text in noryoku.values() or
+          message.text in noryoku_translate.values()): 
         check_answer(message)
     else:
         bot.send_message(message.chat.id, 'Ты ничего не выбрал. ')
@@ -88,12 +89,12 @@ def back_to_start(message):
     user_data[message.chat.id]['katakana']['current'] = None
     user_data[message.chat.id]['hiragana']['current'] = None
     user_data[message.chat.id]['kanji']['current'] = None
-    user_data[message.chat.id]['kanji_check'] = None  # Сбросить выбор между чтением и значением
+    user_data[message.chat.id]['kanji_check'] = None  # Сбросить выбор между чтением и значением 
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(telebot.types.KeyboardButton('Хирагана'))
     keyboard.add(telebot.types.KeyboardButton('Катакана'))
-    keyboard.add(telebot.types.KeyboardButton('Кандзи JLPT5'))
+    keyboard.add(telebot.types.KeyboardButton('Кандзи N5-N4'))
     bot.send_message(message.chat.id, 'Что будем проверять?', reply_markup=keyboard)
 
 
@@ -101,6 +102,7 @@ def check_answer(message):
     correct_symbol = None
     correct_reading = None
     correct_meaning = None  # Инициализация для значений кандзи
+
 
     # Проверка для катаканы, хираганы и кандзи
     if user_data[message.chat.id]['katakana']['current']:
@@ -112,9 +114,11 @@ def check_answer(message):
     elif user_data[message.chat.id]['kanji']['current']:
         correct_symbol = user_data[message.chat.id]['kanji']['current']
         if user_data[message.chat.id]['kanji_check'] == 'reading':
-            correct_reading = noryoku_5[correct_symbol]
+            correct_reading = noryoku[correct_symbol]
         elif user_data[message.chat.id]['kanji_check'] == 'meaning':
-            correct_meaning = noryoku_5_translate[correct_symbol]
+            correct_meaning = noryoku_translate[correct_symbol]
+
+
 
     # Проверка ответа
     if correct_reading and message.text.strip().lower() == correct_reading.strip().lower():
@@ -139,8 +143,6 @@ def check_answer(message):
             check_kanji_meaning(message)
 
 
-
-
 def check_katakana(message):
     questions = user_data[message.chat.id]['katakana']['questions']
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -148,6 +150,8 @@ def check_katakana(message):
     if not questions:
         keyboard.add(telebot.types.KeyboardButton('Главное меню'))
         bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все слоги катаканы!', reply_markup=keyboard)
+        back_to_start(message)
+        return
 
     current_question = random.choice(questions)
     user_data[message.chat.id]['katakana']['current'] = current_question
@@ -174,6 +178,7 @@ def check_hiragana(message):
     if not questions:
         keyboard.add(telebot.types.KeyboardButton('Главное меню'))
         bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все слоги хираганы!', reply_markup=keyboard)
+        back_to_start(message)
         return
 
     current_question = random.choice(questions)
@@ -233,7 +238,8 @@ def check_kanji_reading(message):
     if not questions:
         keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(telebot.types.KeyboardButton('Главное меню'))
-        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все кандзи N5!', reply_markup=keyboard)
+        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все кандзи!', reply_markup=keyboard)
+        back_to_start(message)
         return
 
     # Выбираем текущий вопрос и сохраняем его в user_data
@@ -244,15 +250,15 @@ def check_kanji_reading(message):
     # Продолжаем с кнопками
     options = [current_question]
     for _ in range(3):
-        option = random.choice(list(noryoku_5.keys()))
+        option = random.choice(list(noryoku.keys()))
         while option in options:
-            option = random.choice(list(noryoku_5.keys()))
+            option = random.choice(list(noryoku.keys()))
         options.append(option)
     random.shuffle(options)
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     for option in options:
-        kanji_option = noryoku_5[option]  # Преобразуем символы кандзи в чтения (кунъёми и онъёми)
+        kanji_option = noryoku[option]  # Преобразуем символы кандзи в чтения (кунъёми и онъёми)
         keyboard.add(telebot.types.KeyboardButton(kanji_option))
 
     keyboard.add(telebot.types.KeyboardButton('Назад'))
@@ -269,7 +275,8 @@ def check_kanji_meaning(message):
     if not questions:
         keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(telebot.types.KeyboardButton('Главное меню'))
-        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все кандзи N5!', reply_markup=keyboard)
+        bot.send_message(message.chat.id, 'Поздравляю! Ты прошёл все кандзи!', reply_markup=keyboard)
+        back_to_start(message)
         return
 
     current_question = random.choice(questions)
@@ -278,18 +285,19 @@ def check_kanji_meaning(message):
 
     options = [current_question]
     for _ in range(3):
-        option = random.choice(list(noryoku_5_translate.keys()))
+        option = random.choice(list(noryoku_translate.keys()))
         while option in options:
-            option = random.choice(list(noryoku_5_translate.keys()))
+            option = random.choice(list(noryoku_translate.keys()))
         options.append(option)
     random.shuffle(options)
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     for option in options:
-        meaning_option = noryoku_5_translate[option]  # Преобразуем кандзи в его значение
+        meaning_option = noryoku_translate[option]  # Преобразуем кандзи в его значение
         keyboard.add(telebot.types.KeyboardButton(meaning_option))
     keyboard.add(telebot.types.KeyboardButton('Назад'))
     bot.send_message(message.chat.id, f"{current_question} – что означает этот кандзи?", reply_markup=keyboard)
+
 
 
 @bot.message_handler(func=lambda message: message.text == 'Главное меню')
@@ -299,7 +307,7 @@ def main_menu(message):
 
 while True:
     try:
-        bot.polling(non_stop=True, timeout=120, long_polling_timeout=120)
+        bot.polling(non_stop=True, timeout=160, long_polling_timeout=160)
     except Exception as e:
         print(f"Error occurred: {e}")
         time.sleep(5)
