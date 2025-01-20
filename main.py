@@ -28,7 +28,8 @@ def start(message):
     user_data[message.chat.id] = {'katakana': {'questions': list(romaji_katakana.keys()), 'current': None},
                                   'hiragana': {'questions': list(romaji_hiragana.keys()), 'current': None},
                                   'kanji': {'questions': list(noryoku.keys()),'current': None},
-                                  'kanji_translate':{'questions': list(noryoku_translate.keys()), 'current': None}
+                                  'kanji_translate':{'questions': list(noryoku_translate.keys()), 'current': None},
+                                  'stats': {'correct': 0, 'total': 0}  # Статистика для подсчёта
                                 }
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(telebot.types.KeyboardButton('Хирагана'))
@@ -91,6 +92,9 @@ def back_to_start(message):
     user_data[message.chat.id]['kanji']['current'] = None
     user_data[message.chat.id]['kanji_check'] = None  # Сбросить выбор между чтением и значением 
 
+    # Сброс статистики
+    user_data[message.chat.id]['stats'] = {'correct': 0, 'total': 0}
+
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(telebot.types.KeyboardButton('Хирагана'))
     keyboard.add(telebot.types.KeyboardButton('Катакана'))
@@ -119,17 +123,30 @@ def check_answer(message):
             correct_meaning = noryoku_translate[correct_symbol]
 
 
+    # Обновление общего числа попыток
+    user_data[message.chat.id]['stats']['total'] += 1
 
     # Проверка ответа
     if correct_reading and message.text.strip().lower() == correct_reading.strip().lower():
+        user_data[message.chat.id]['stats']['correct'] += 1  # Обновление правильных ответов
         bot.send_message(message.chat.id, 'Верно!')
     elif correct_meaning and message.text.strip().lower() == correct_meaning.strip().lower():
+        user_data[message.chat.id]['stats']['correct'] += 1  # Обновление правильных ответов
         bot.send_message(message.chat.id, 'Верно!')
     else:
         if correct_reading:
             bot.send_message(message.chat.id, f'Неправильно! Правильный ответ: {correct_reading}')
         elif correct_meaning:
             bot.send_message(message.chat.id, f'Неправильно! Правильный ответ: {correct_meaning}')
+
+
+    # Показ статистики пользователю
+    stats = user_data[message.chat.id]['stats']
+    bot.send_message(
+        message.chat.id,
+        f"📊 Твоя статистика: {stats['correct']} правильных ответов из {stats['total']}."
+    )
+
 
     # Перемещение к следующему вопросу
     if user_data[message.chat.id]['katakana']['current']:
